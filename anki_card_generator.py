@@ -4,13 +4,27 @@ from pathlib import Path
 from openai import OpenAI
 import base64
 import os
-import csv
+import genanki
+import random
+import argparse
+from tqdm import tqdm  # For progress indication
+import requests
 
 class AnkiCardGenerator:
-    def __init__(self):
-        self.client = OpenAI()
-        self.media_dir = "anki_media"
+    def __init__(self, api_key):
+        self.client = OpenAI(
+            api_key=api_key
+        )
+        # Create media directory if it doesn't exist
+        self.media_dir = os.path.join(os.getcwd(), "anki_media")
         os.makedirs(self.media_dir, exist_ok=True)
+        print(f"Media directory: {self.media_dir}")
+        
+        # List to store media files
+        self.media_files = []
+        
+        # Store notes for later export
+        self.notes = []
         
     def extract_bold_text(self, line):
         bold_pattern = r'\*\*(.*?)\*\*'
@@ -18,7 +32,11 @@ class AnkiCardGenerator:
         return matches if matches else [line.strip()]
     
     def translate_text(self, text, is_sentence=False):
-        prompt = f"Translate the following {'sentence' if is_sentence else 'word/phrase'} to Russian: {text}"
+        if is_sentence:
+            prompt = f"Translate the following sentence to Russian: {text}"
+        else:
+            prompt = f"Translate this English word/phrase to Russian. Give ONLY the shortest possible translation, no explanations: {text}"
+            
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
@@ -34,109 +52,187 @@ class AnkiCardGenerator:
         return response.choices[0].message.content.strip()
     
     def generate_audio(self, text, is_sentence=False):
-        filename = f"audio_{'sentence' if is_sentence else 'word'}_{base64.b64encode(text.encode()).decode()[:10]}.mp3"
-        filepath = os.path.join(self.media_dir, filename)
-        
-        response = self.client.audio.speech.create(
-            model="tts-1",
-            voice="alloy",
-            input=text
-        )
-        
-        response.stream_to_file(filepath)
-        return f"[sound:{filename}]"  # Anki sound tag format
+        try:
+            print(f"Generating audio for: {text}")
+            filename = f"audio_{'sentence' if is_sentence else 'word'}_{base64.b64encode(text.encode()).decode()[:10]}.mp3"
+            filepath = os.path.join(self.media_dir, filename)
+            print(f"Will save audio to: {filepath}")
+            
+            # Use with_streaming_response instead of stream_to_file
+            with self.client.audio.speech.with_streaming_response.create(
+                model="tts-1",
+                voice="alloy",
+                input=text
+            ) as response:
+                # Save the audio file
+                with open(filepath, 'wb') as f:
+                    for chunk in response.iter_bytes():
+                        f.write(chunk)
+                print(f"Audio saved successfully to {filepath}")
+            
+            # Add to media files list
+            self.media_files.append(filepath)
+            
+            # Return sound tag for Anki
+            return f"[sound:{filename}]"
+            
+        except Exception as e:
+            print(f"Error in generate_audio: {str(e)}")
+            return ""
     
     def generate_image(self, sentence):
-        response = self.client.images.generate(
-            model="dall-e-3",
-            prompt=f"Create a simple illustration for the sentence: {sentence}",
-            size="1024x1024",
-            quality="standard",
-            n=1,
-        )
-        
-        # Save the image
-        image_url = response.data[0].url
-        return f"<img src='{image_url}'>"  # Anki HTML image tag
+        try:
+            print(f"Generating image for: {sentence}")
+            response = self.client.images.generate(
+                model="dall-e-2",  # DALL-E 2
+                prompt=f"Create a simple illustration for the sentence: {sentence}",
+                size="256x256",    # Smallest size available
+                n=1,
+            )
+            
+            # Get image URL and download it
+            image_url = response.data[0].url
+            print(f"Image URL received: {image_url}")
+            
+            # Generate unique filename
+            safe_sentence = re.sub(r'[^a-zA-Z0-9]', '', sentence)[:30]
+            filename = f"img_{safe_sentence}.jpg"
+            filepath = os.path.join(self.media_dir, filename)
+            print(f"Saving image to: {filepath}")
+            
+            # Download image
+            img_response = requests.get(image_url, stream=True)
+            if img_response.status_code == 200:
+                with open(filepath, 'wb') as f:
+                    for chunk in img_response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                print(f"Image saved successfully to {filepath}")
+                
+                # Add to media files list for Anki package
+                self.media_files.append(filepath)
+                
+                # Return only the filename for Anki
+                return f'<img src="{filename}">'
+            else:
+                print(f"Failed to download image. Status code: {img_response.status_code}")
+                return ""
+                
+        except Exception as e:
+            print(f"Error in generate_image: {str(e)}")
+            return ""
     
     def process_line(self, line):
+        print("\nProcessing:", line.strip())
+        
         bold_texts = self.extract_bold_text(line)
         foreign = bold_texts[0] if bold_texts else line.strip()
-        foreign_sentence = line.strip().replace('*', '')
+        
+        # Replace markdown with HTML matching the sample format
+        foreign_sentence = line.strip()
+        for bold_text in bold_texts:
+            foreign_sentence = foreign_sentence.replace(
+                f"**{bold_text}**",
+                f'<span style="color: rgb(234, 78, 0);"><b>{bold_text}</b></span>'
+            )
         
         # Generate translations
+        print("Generating translations...")
         russian = self.translate_text(foreign)
-        russian_sentence = self.translate_text(foreign_sentence, is_sentence=True)
+        
+        # Format Russian sentence with bold text for translations
+        print("Formatting Russian sentence...")
+        russian_sentence = self.translate_text(line.strip().replace('**', ''), is_sentence=True)
+        if bold_texts and russian:
+            russian_sentence = russian_sentence.replace(russian, f'<b>{russian}</b>')
         
         # Generate audio files
+        print("Generating word audio...")
         audio = self.generate_audio(foreign)
-        audio_sentence = self.generate_audio(foreign_sentence, is_sentence=True)
+        print("Generating sentence audio...")
+        audio_sentence = self.generate_audio(line.strip().replace('**', ''), is_sentence=True)
         
         # Generate image
-        image = self.generate_image(foreign_sentence)
+        print("Generating image...")
+        image = self.generate_image(line.strip().replace('**', ''))
         
         # Get expanded meaning
+        print("Getting expanded meaning...")
         expanded_meaning = self.get_expanded_meaning(foreign)
         
-        return [
-            foreign,                 # Foreign
-            foreign_sentence,        # Foreign Sentence
-            russian,                 # Russian
-            russian_sentence,        # Russian Sentence
-            audio,                   # Audio
-            audio_sentence,          # Audio Sentence
-            expanded_meaning,        # Expanded Meaning
-            image,                   # Image
-            "",                      # Url
-            "",                      # frequencies
-            "openAPI"               # Tags
-        ]
-    
-    def generate_cards(self, input_file):
-        cards = []
-        # Define headers for Anki import
-        headers = [
-            "Foreign",
-            "Foreign Sentence",
-            "Russian",
-            "Russian Sentence",
-            "Audio",
-            "Audio Sentence",
-            "Expanded Meaning",
-            "Image",
-            "Url",
-            "frequencies",
-            "Tags"
-        ]
+        # Create note in the format matching sample.txt
+        guid = f"card_{len(self.notes)}_{random.randrange(1 << 30, 1 << 31)}"
+        note = {
+            'guid': guid,
+            'notetype': 'Dollar_Type',
+            'deck': 'English',
+            'fields': [
+                foreign,                 # Foreign
+                foreign_sentence,        # Foreign Sentence with highlighting
+                russian,                 # Russian
+                russian_sentence,        # Russian Sentence with bold
+                audio,                   # Audio
+                audio_sentence,          # Audio Sentence
+                expanded_meaning,        # Expanded Meaning
+                image,                   # Image
+                "",                      # Url
+                "",                      # frequencies
+                "openAPI"                # Tags
+            ]
+        }
         
-        # Generate cards
+        self.notes.append(note)
+        print("Note created successfully!")
+
+    def generate_cards(self, input_file):
+        # Process all lines
         with open(input_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if line.strip():
-                    card = self.process_line(line)
-                    cards.append(card)
+                    self.process_line(line)
         
-        # Save as tab-separated file
-        output_file = 'anki_cards.txt'
-        with open(output_file, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f, delimiter='\t')
-            writer.writerow(headers)  # Write headers
-            writer.writerows(cards)   # Write cards
+        # Export notes in the format matching sample.txt
+        output_file = 'vocabulary_cards.txt'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            # Write headers
+            f.write("#separator:tab\n")
+            f.write("#html:true\n")
+            f.write("#guid column:1\n")
+            f.write("#notetype column:2\n")
+            f.write("#deck column:3\n")
+            f.write("#tags column:15\n")
+            
+            # Write notes
+            for note in self.notes:
+                fields = '\t'.join(note['fields'])
+                line = f"{note['guid']}\t{note['notetype']}\t{note['deck']}\t{fields}\n"
+                f.write(line)
         
-        return len(cards)
+        return len(self.notes)
 
 if __name__ == "__main__":
-    generator = AnkiCardGenerator()
-    num_cards = generator.generate_cards('input.md')
-    print(f"""Generated {num_cards} Anki cards!
+    parser = argparse.ArgumentParser(description='Generate Anki cards with OpenAI integration')
+    parser.add_argument('--api-key', '-k', 
+                      required=True,
+                      help='OpenAI API key')
+    parser.add_argument('--input', '-i',
+                      default='input.md',
+                      help='Input file path (default: input.md)')
+    
+    args = parser.parse_args()
+    
+    generator = AnkiCardGenerator(args.api_key)
+    num_cards = generator.generate_cards(args.input)
+    
+    print(f"""\nSuccess! Generated {num_cards} notes!
 
-Instructions for importing into Anki:
-1. Copy all .mp3 files from the 'anki_media' folder to your Anki media collection folder:
-   - On Mac: ~/Library/Application Support/Anki2/User 1/collection.media/
-2. Import anki_cards.txt in Anki:
-   - File -> Import
-   - Select anki_cards.txt
-   - Set Type to "Basic"
-   - Set Field separator to "Tab"
-   - Match fields as needed
-   - Click Import""") 
+Instructions:
+1. Open Anki
+2. File -> Import
+3. Select the generated file 'vocabulary_cards.txt'
+4. Make sure to select:
+   - Type: 'Dollar_Type'
+   - Deck: 'English'
+   - Fields separated by: Tab
+   - Allow HTML in fields
+5. Click Import""") 
