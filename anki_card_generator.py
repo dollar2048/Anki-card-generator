@@ -1,10 +1,8 @@
 import re
 import json
-from pathlib import Path
 from openai import OpenAI
 import base64
 import os
-import genanki
 import random
 import argparse
 from tqdm import tqdm  # For progress indication
@@ -15,6 +13,7 @@ class AnkiCardGenerator:
         self.client = OpenAI(
             api_key=api_key
         )
+        self.generate_media = False
         # Create media directory if it doesn't exist
         self.media_dir = os.path.join(os.getcwd(), "anki_media")
         os.makedirs(self.media_dir, exist_ok=True)
@@ -52,6 +51,9 @@ class AnkiCardGenerator:
         return response.choices[0].message.content.strip()
     
     def generate_audio(self, text, is_sentence=False):
+        if not self.generate_media:
+            return ""
+            
         try:
             print(f"Generating audio for: {text}")
             filename = f"audio_{'sentence' if is_sentence else 'word'}_{base64.b64encode(text.encode()).decode()[:10]}.mp3"
@@ -81,12 +83,16 @@ class AnkiCardGenerator:
             return ""
     
     def generate_image(self, sentence):
+        if not self.generate_media:
+            return ""
+            
         try:
             print(f"Generating image for: {sentence}")
             response = self.client.images.generate(
-                model="dall-e-2",  # DALL-E 2
+                model="dall-e-3",  # Upgrade to DALL-E 3
                 prompt=f"Create a simple illustration for the sentence: {sentence}",
-                size="256x256",    # Smallest size available
+                size="1024x1024",  # Higher quality
+                quality="standard",
                 n=1,
             )
             
@@ -213,15 +219,30 @@ class AnkiCardGenerator:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate Anki cards with OpenAI integration')
     parser.add_argument('--api-key', '-k', 
-                      required=True,
-                      help='OpenAI API key')
+                      help='OpenAI API key (optional, can use OPENAI_API_KEY environment variable)')
     parser.add_argument('--input', '-i',
                       default='input.md',
                       help='Input file path (default: input.md)')
+    parser.add_argument('--generate-media', '-m',
+                      action='store_true',
+                      default=False,
+                      help='Generate images and audio (default: False)')
     
     args = parser.parse_args()
     
-    generator = AnkiCardGenerator(args.api_key)
+    # Get API key from command line or environment variable
+    api_key = args.api_key or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("\nError: OpenAI API key is required!")
+        print("Either set OPENAI_API_KEY environment variable or provide --api-key parameter")
+        print("\nExample usage:")
+        print("  python anki_card_generator.py --input words.md")
+        print("  python anki_card_generator.py --input words.md --generate-media")
+        print("  python anki_card_generator.py --api-key sk-... --input words.md")
+        exit(1)
+    
+    generator = AnkiCardGenerator(api_key)
+    generator.generate_media = args.generate_media
     num_cards = generator.generate_cards(args.input)
     
     print(f"""\nSuccess! Generated {num_cards} notes!
