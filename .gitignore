@@ -1,0 +1,7 @@
+
+# ignore gitpmoji directory
+gitpmoji
+/anki_media
+.DS_Store
+vocabulary_cards.txt
+input.md

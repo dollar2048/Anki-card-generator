@@ -37,7 +37,7 @@ class AnkiCardGenerator:
             prompt = f"Translate this English word/phrase to Russian. Give ONLY the shortest possible translation, no explanations: {text}"
             
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
@@ -45,7 +45,7 @@ class AnkiCardGenerator:
     def get_expanded_meaning(self, word):
         prompt = f"Give a short explanation in Russian for the English word/phrase: {word}"
         response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
