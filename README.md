@@ -32,10 +32,15 @@ Each card contains the following fields:
 - Python 3.x
 - OpenAI API key
 - Anki installed with "Dollar_Type" note type and "English" deck
-- Required Python packages (install with pip if not present):
-  ```bash
-  pip install openai requests tqdm
-  ```
+- Required Python packages. For macOS users:
+```bash
+  # Create a virtual environment (recommended for macOS)
+  python3 -m venv venv
+  source venv/bin/activate
+  
+  # Install required packages
+  python3 -m pip install openai requests tqdm
+```
 
 ## Installation
 
@@ -60,13 +65,13 @@ She was **kind** and polite
 2. Run the script:
 ```bash
 # If OPENAI_API_KEY is set in environment:
-python anki_card_generator.py --input input.md
+python3 anki_card_generator.py --input input.md
 
 # With media generation (images and audio):
-python anki_card_generator.py --input input.md --generate-media
+python3 anki_card_generator.py --input input.md --generate-media
 
 # Or with explicit API key:
-python anki_card_generator.py --api-key 'your-api-key-here' --input input.md
+python3 anki_card_generator.py --api-key 'your-api-key-here' --input input.md
 ```
 
 3. Import the generated cards:
@@ -79,6 +84,9 @@ python anki_card_generator.py --api-key 'your-api-key-here' --input input.md
      - Fields separated by: Tab
      - Allow HTML in fields
    - Click Import
+
+4. Result in Anki:
+![alt text](sample.png)
 
 ## Project Structure
 
