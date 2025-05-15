@@ -25,7 +25,7 @@ Each card contains the following fields:
 8. Image - generated image using DALL-E 3
 9. Url - (empty)
 10. frequencies - (empty)
-11. Tags - "openAPI" tag
+11. Tags - "openAI" tag
 
 ## Requirements
 
@@ -67,7 +67,7 @@ She was **kind** and polite
 # If OPENAI_API_KEY is set in environment:
 python3 anki_card_generator.py --input input.md
 
-# With media generation (images and audio):
+# With images generation:
 python3 anki_card_generator.py --input input.md --generate-media
 
 # Or with explicit API key:

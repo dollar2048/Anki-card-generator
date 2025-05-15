@@ -50,10 +50,7 @@ class AnkiCardGenerator:
         )
         return response.choices[0].message.content.strip()
     
-    def generate_audio(self, text, is_sentence=False):
-        if not self.generate_media:
-            return ""
-            
+    def generate_audio(self, text, is_sentence=False):           
         try:
             print(f"Generating audio for: {text}")
             filename = f"audio_{'sentence' if is_sentence else 'word'}_{base64.b64encode(text.encode()).decode()[:10]}.mp3"
@@ -183,7 +180,7 @@ class AnkiCardGenerator:
                 image,                   # Image
                 "",                      # Url
                 "",                      # frequencies
-                "openAPI"                # Tags
+                "openAI"                # Tags
             ]
         }
         
@@ -226,7 +223,7 @@ if __name__ == "__main__":
     parser.add_argument('--generate-media', '-m',
                       action='store_true',
                       default=False,
-                      help='Generate images and audio (default: False)')
+                      help='Generate images (default: False)')
     
     args = parser.parse_args()
     
