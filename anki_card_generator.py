@@ -25,9 +25,9 @@ class AnkiCardGenerator:
         # Store notes for later export
         self.notes = []
         
-    def extract_bold_text(self, line):
-        bold_pattern = r'\*\*(.*?)\*\*'
-        matches = re.findall(bold_pattern, line)
+    def extract_italic_text(self, line):
+        italic_pattern = r'\*(.*?)\*'
+        matches = re.findall(italic_pattern, line)
         return matches if matches else [line.strip()]
     
     def translate_text(self, text, is_sentence=False):
@@ -128,36 +128,118 @@ class AnkiCardGenerator:
     def process_line(self, line):
         print("\nProcessing:", line.strip())
         
-        bold_texts = self.extract_bold_text(line)
-        foreign = bold_texts[0] if bold_texts else line.strip()
+        italic_texts = self.extract_italic_text(line)
+
+        # If it's just a single word/phrase in italic
+        if len(italic_texts) == 1 and italic_texts[0] == line.strip().replace('*', ''):
+            foreign = italic_texts[0]
+            russian = self.translate_text(foreign)
+            
+            # Generate audio for foreign text
+            print("Generating word audio...")
+            audio = self.generate_audio(foreign)
+            
+            # Generate image if needed
+            print("Generating image...")
+            image = self.generate_image(foreign) if self.generate_media else ""
+            
+            # Get expanded meaning
+            print("Getting expanded meaning...")
+            expanded_meaning = self.get_expanded_meaning(foreign)
+            
+            # Create note with only essential fields
+            guid = f"card_{len(self.notes)}_{random.randrange(1 << 30, 1 << 31)}"
+            note = {
+                'guid': guid,
+                'notetype': 'Dollar_Type',
+                'deck': 'English',
+                'fields': [
+                    foreign,                 # Foreign
+                    "",                      # Foreign Sentence with highlighting
+                    russian,                 # Russian
+                    "",                      # Russian Sentence with italic
+                    audio,                   # Audio
+                    "",                      # Audio Sentence
+                    expanded_meaning,        # Expanded Meaning
+                    image,                   # Image
+                    "",                      # Url
+                    "",                      # frequencies
+                    "openAI"                 # Tags
+                ]
+            }
+            
+            self.notes.append(note)
+            print("Note created successfully!")
+            return
+            
+        # If no italic text in the sentence
+        if not italic_texts:
+            foreign = line.strip()
+            russian = self.translate_text(foreign, is_sentence=True)
+            
+            # Generate audio for foreign text
+            audio = self.generate_audio(foreign)
+            
+            # Generate image if needed
+            image = self.generate_image(foreign) if self.generate_media else ""
+            
+            # Create note with only essential fields
+            guid = f"card_{len(self.notes)}_{random.randrange(1 << 30, 1 << 31)}"
+            note = {
+                'guid': guid,
+                'notetype': 'Dollar_Type',
+                'deck': 'English',
+                'fields': [
+                    foreign,                 # Foreign
+                    "",                      # Foreign Sentence with highlighting
+                    russian,                 # Russian
+                    "",                      # Russian Sentence with italic
+                    audio,                   # Audio
+                    "",                      # Audio Sentence
+                    "",                      # Expanded Meaning
+                    image,                   # Image
+                    "",                      # Url
+                    "",                      # frequencies
+                    "openAI"                 # Tags
+                ]
+            }
+            
+            self.notes.append(note)
+            print("Note created successfully!")
+            return
+            
+        print("\nIt's a sentence with italic text")
+
+        # Original logic for sentences with italic text
+        foreign = italic_texts[0] if italic_texts else line.strip()
         
         # Replace markdown with HTML matching the sample format
         foreign_sentence = line.strip()
-        for bold_text in bold_texts:
+        for italic_text in italic_texts:
             foreign_sentence = foreign_sentence.replace(
-                f"**{bold_text}**",
-                f'<span style="color: rgb(234, 78, 0);"><b>{bold_text}</b></span>'
+                f"*{italic_text}*",
+                f'<span style="color: rgb(234, 78, 0);"><b>{italic_text}</b></span>'
             )
         
         # Generate translations
         print("Generating translations...")
         russian = self.translate_text(foreign)
         
-        # Format Russian sentence with bold text for translations
+        # Format Russian sentence with italic text for translations
         print("Formatting Russian sentence...")
-        russian_sentence = self.translate_text(line.strip().replace('**', ''), is_sentence=True)
-        if bold_texts and russian:
+        russian_sentence = self.translate_text(line.strip().replace('*', ''), is_sentence=True)
+        if italic_texts and russian:
             russian_sentence = russian_sentence.replace(russian, f'<b>{russian}</b>')
         
         # Generate audio files
         print("Generating word audio...")
         audio = self.generate_audio(foreign)
         print("Generating sentence audio...")
-        audio_sentence = self.generate_audio(line.strip().replace('**', ''), is_sentence=True)
+        audio_sentence = self.generate_audio(line.strip().replace('*', ''), is_sentence=True)
         
         # Generate image
         print("Generating image...")
-        image = self.generate_image(line.strip().replace('**', ''))
+        image = self.generate_image(line.strip().replace('*', ''))
         
         # Get expanded meaning
         print("Getting expanded meaning...")
@@ -173,7 +255,7 @@ class AnkiCardGenerator:
                 foreign,                 # Foreign
                 foreign_sentence,        # Foreign Sentence with highlighting
                 russian,                 # Russian
-                russian_sentence,        # Russian Sentence with bold
+                russian_sentence,        # Russian Sentence with italic
                 audio,                   # Audio
                 audio_sentence,          # Audio Sentence
                 expanded_meaning,        # Expanded Meaning
