@@ -61,7 +61,8 @@ class AnkiCardGenerator:
             with self.client.audio.speech.with_streaming_response.create(
                 model="tts-1",
                 voice="alloy",
-                input=text
+                input=text,
+                speed=0.8  # Slower speech rate
             ) as response:
                 # Save the audio file
                 with open(filepath, 'wb') as f:
