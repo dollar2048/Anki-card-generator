@@ -9,11 +9,13 @@ from tqdm import tqdm  # For progress indication
 import requests
 
 class AnkiCardGenerator:
-    def __init__(self, api_key):
+    def __init__(self, api_key, source_lang="English", target_lang="Russian"):
         self.client = OpenAI(
             api_key=api_key
         )
         self.generate_media = False
+        self.source_lang = source_lang
+        self.target_lang = target_lang
         # Create media directory if it doesn't exist
         self.media_dir = os.path.join(os.getcwd(), "anki_media")
         os.makedirs(self.media_dir, exist_ok=True)
@@ -32,9 +34,9 @@ class AnkiCardGenerator:
     
     def translate_text(self, text, is_sentence=False):
         if is_sentence:
-            prompt = f"Translate the following sentence to Russian: {text}"
+            prompt = f"Translate the following sentence from {self.source_lang} to {self.target_lang}: {text}"
         else:
-            prompt = f"Translate this English word/phrase to Russian. Give ONLY the shortest possible translation, no explanations: {text}"
+            prompt = f"Translate this {self.source_lang} word/phrase to {self.target_lang}. Give ONLY the shortest possible translation, no explanations: {text}"
             
         response = self.client.chat.completions.create(
             model="gpt-4.1-nano",
@@ -43,7 +45,7 @@ class AnkiCardGenerator:
         return response.choices[0].message.content.strip()
     
     def get_expanded_meaning(self, word):
-        prompt = f"Give a short explanation in Russian for the English word/phrase: {word}"
+        prompt = f"Give a short explanation in {self.target_lang} for the {self.source_lang} word/phrase: {word}"
         response = self.client.chat.completions.create(
             model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}]
@@ -307,6 +309,12 @@ if __name__ == "__main__":
                       action='store_true',
                       default=False,
                       help='Generate images (default: False)')
+    parser.add_argument('--source-lang', '-s',
+                      default='English',
+                      help='Source language (default: English)')
+    parser.add_argument('--target-lang', '-t',
+                      default='Russian',
+                      help='Target language (default: Russian)')
     
     args = parser.parse_args()
     
@@ -319,9 +327,10 @@ if __name__ == "__main__":
         print("  python anki_card_generator.py --input words.md")
         print("  python anki_card_generator.py --input words.md --generate-media")
         print("  python anki_card_generator.py --api-key sk-... --input words.md")
+        print("  python anki_card_generator.py --source-lang German --target-lang French --input words.md")
         exit(1)
     
-    generator = AnkiCardGenerator(api_key)
+    generator = AnkiCardGenerator(api_key, args.source_lang, args.target_lang)
     generator.generate_media = args.generate_media
     num_cards = generator.generate_cards(args.input)
     
