@@ -1,6 +1,6 @@
 # Anki Card Generator
 
-A script for automatically generating Anki cards from a markdown file with bold-highlighted words/phrases. Cards are added to your existing "English" deck using "Dollar_Type" note type.
+A script for automatically generating Anki cards from a rich-text or markdown file with bold-highlighted words/phrases. Cards are added to your existing "English" deck using "Dollar_Type" note type.
 
 ## Features
 
@@ -39,7 +39,7 @@ Each card contains the following fields:
   source venv/bin/activate
   
   # Install required packages
-  python3 -m pip install openai requests tqdm
+  pip3 install -r requirements.txt
 ```
 
 ## Installation
@@ -56,23 +56,41 @@ cd Anki-card-generator
 
 ## Usage
 
-1. Create an `input.md` file with sentences where target words are in bold:
+1. Create an `input.rtf` file with sentences where target words are in bold:
 ```markdown
-I'll give our **daughter** a ride
-She was **kind** and polite
+Mein Leben ist **aufregend**.
 ```
 
 2. Run the script:
 ```bash
+# With Default arguments:
+python3 anki_card_generator.py
+
+# With custom source languages:
+python3 anki_card_generator.py --source-lang German --input input.rtf
+
 # If OPENAI_API_KEY is set in environment:
-python3 anki_card_generator.py --input input.md
+python3 anki_card_generator.py --input input.rtf
 
 # With images generation:
-python3 anki_card_generator.py --input input.md --generate-media
+python3 anki_card_generator.py --input input.rtf --generate-media
 
 # Or with explicit API key:
-python3 anki_card_generator.py --api-key 'your-api-key-here' --input input.md
+python3 anki_card_generator.py --api-key 'your-api-key-here' --input input.rtf
 ```
+
+### Rich Text Format (.rtf)
+- Use italic formatting for words to learn
+- Can be created using any text editor that supports RTF
+- Supports both single words and sentences with highlighted words
+
+## Command Line Arguments
+
+- `--input`, `-i`: Input file path (default: input.rtf)
+- `--api-key`, `-k`: OpenAI API key (optional, can use OPENAI_API_KEY environment variable)
+- `--generate-media`, `-m`: Generate images (default: False)
+- `--source-lang`, `-s`: Source language (default: English)
+- `--target-lang`, `-t`: Target language (default: Russian)
 
 3. Import the generated cards:
    - Open Anki
@@ -91,7 +109,7 @@ python3 anki_card_generator.py --api-key 'your-api-key-here' --input input.md
 ## Project Structure
 
 - `anki_card_generator.py` - main script
-- `input.md` - input file with sentences
+- `input.rtf` - input file with sentences
 - `anki_media/` - folder for media files (images and audio)
 - `vocabulary_cards.txt` - generated import file
 

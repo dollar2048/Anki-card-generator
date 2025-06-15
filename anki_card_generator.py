@@ -7,6 +7,9 @@ import random
 import argparse
 from tqdm import tqdm  # For progress indication
 import requests
+from striprtf.striprtf import rtf_to_text  # Add RTF support
+import pypandoc
+from bs4 import BeautifulSoup
 
 class AnkiCardGenerator:
     def __init__(self, api_key, source_lang="English", target_lang="Russian"):
@@ -28,8 +31,9 @@ class AnkiCardGenerator:
         self.notes = []
         
     def extract_italic_text(self, line):
-        italic_pattern = r'\*(.*?)\*'
-        matches = re.findall(italic_pattern, line)
+        # Change pattern to look for bold text instead of italic
+        bold_pattern = r'\*\*(.*?)\*\*'
+        matches = re.findall(bold_pattern, line)
         return matches if matches else [line.strip()]
     
     def translate_text(self, text, is_sentence=False):
@@ -131,12 +135,12 @@ class AnkiCardGenerator:
     def process_line(self, line):
         print("\nProcessing:", line.strip())
         
-        italic_texts = self.extract_italic_text(line)
+        bold_texts = self.extract_italic_text(line)
 
-        # If it's just a single word/phrase in italic
-        if len(italic_texts) == 1 and italic_texts[0] == line.strip().replace('*', ''):
-            foreign = italic_texts[0]
-            russian = self.translate_text(foreign)
+        # If only one word/phrase is in bold
+        if len(bold_texts) == 1 and bold_texts[0] == line.strip().replace('**', ''):
+            foreign = bold_texts[0]
+            russian = self.translate_text(foreign)  # Translate only the highlighted word
             
             # Generate audio for foreign text
             print("Generating word audio...")
@@ -160,7 +164,7 @@ class AnkiCardGenerator:
                     foreign,                 # Foreign
                     "",                      # Foreign Sentence with highlighting
                     russian,                 # Russian
-                    "",                      # Russian Sentence with italic
+                    "",                      # Russian Sentence with bold
                     audio,                   # Audio
                     "",                      # Audio Sentence
                     expanded_meaning,        # Expanded Meaning
@@ -175,8 +179,8 @@ class AnkiCardGenerator:
             print("Note created successfully!")
             return
             
-        # If no italic text in the sentence
-        if not italic_texts:
+        # If there is no bold text in the sentence
+        if not bold_texts:
             foreign = line.strip()
             russian = self.translate_text(foreign, is_sentence=True)
             
@@ -196,7 +200,7 @@ class AnkiCardGenerator:
                     foreign,                 # Foreign
                     "",                      # Foreign Sentence with highlighting
                     russian,                 # Russian
-                    "",                      # Russian Sentence with italic
+                    "",                      # Russian Sentence with bold
                     audio,                   # Audio
                     "",                      # Audio Sentence
                     "",                      # Expanded Meaning
@@ -211,38 +215,41 @@ class AnkiCardGenerator:
             print("Note created successfully!")
             return
             
-        print("\nIt's a sentence with italic text")
+        print("\nIt's a sentence with bold text")
 
-        # Original logic for sentences with italic text
-        foreign = italic_texts[0] if italic_texts else line.strip()
+        # Original logic for sentences with bold text
+        foreign = bold_texts[0] if bold_texts else line.strip()
         
-        # Replace markdown with HTML matching the sample format
+        # Replace markdown with HTML for highlighting
         foreign_sentence = line.strip()
-        for italic_text in italic_texts:
+        for bold_text in bold_texts:
             foreign_sentence = foreign_sentence.replace(
-                f"*{italic_text}*",
-                f'<span style="color: rgb(234, 78, 0);"><b>{italic_text}</b></span>'
+                f"**{bold_text}**",
+                f'<span style="color: rgb(234, 78, 0);"><b>{bold_text}</b></span>'
             )
         
-        # Generate translations
+        # Translate only the highlighted word/phrase
         print("Generating translations...")
         russian = self.translate_text(foreign)
         
-        # Format Russian sentence with italic text for translations
+        # Translate the whole sentence
         print("Formatting Russian sentence...")
-        russian_sentence = self.translate_text(line.strip().replace('*', ''), is_sentence=True)
-        if italic_texts and russian:
-            russian_sentence = russian_sentence.replace(russian, f'<b>{russian}</b>')
+        russian_sentence_full = self.translate_text(line.strip().replace('**', ''), is_sentence=True)
+        # Highlight the translation of the bold word in the translated sentence
+        if russian and russian in russian_sentence_full:
+            russian_sentence = russian_sentence_full.replace(russian, f'<b>{russian}</b>')
+        else:
+            russian_sentence = russian_sentence_full
         
         # Generate audio files
         print("Generating word audio...")
         audio = self.generate_audio(foreign)
         print("Generating sentence audio...")
-        audio_sentence = self.generate_audio(line.strip().replace('*', ''), is_sentence=True)
+        audio_sentence = self.generate_audio(line.strip().replace('**', ''), is_sentence=True)
         
         # Generate image
         print("Generating image...")
-        image = self.generate_image(line.strip().replace('*', ''))
+        image = self.generate_image(line.strip().replace('**', ''))
         
         # Get expanded meaning
         print("Getting expanded meaning...")
@@ -257,8 +264,8 @@ class AnkiCardGenerator:
             'fields': [
                 foreign,                 # Foreign
                 foreign_sentence,        # Foreign Sentence with highlighting
-                russian,                 # Russian
-                russian_sentence,        # Russian Sentence with italic
+                russian,                 # Russian (only highlighted word)
+                russian_sentence,        # Russian Sentence (whole sentence, highlighted word in bold)
                 audio,                   # Audio
                 audio_sentence,          # Audio Sentence
                 expanded_meaning,        # Expanded Meaning
@@ -272,10 +279,39 @@ class AnkiCardGenerator:
         self.notes.append(note)
         print("Note created successfully!")
 
+    def extract_bold_from_rtf(self, rtf_content):
+        html = pypandoc.convert_text(rtf_content, 'html', format='rtf')
+        soup = BeautifulSoup(html, 'html.parser')
+        lines = []
+        for p in soup.find_all(['p', 'div']):
+            line = ''
+            for elem in p.children:
+                if getattr(elem, 'name', None) in ['b', 'strong']:
+                    line += f"**{elem.get_text()}**"
+                elif getattr(elem, 'name', None) == 'span' and elem.has_attr('style') and 'bold' in elem['style']:
+                    line += f"**{elem.get_text()}**"
+                elif elem.name is None:
+                    line += str(elem)
+            if line.strip():
+                lines.append(line.strip())
+        print("DEBUG RTF->MD:", lines)
+        return '\n'.join(lines)
+
     def generate_cards(self, input_file):
         # Process all lines
         with open(input_file, 'r', encoding='utf-8') as f:
-            for line in f:
+            content = f.read()
+            
+            # Check if file is RTF
+            if input_file.lower().endswith('.rtf'):
+                try:
+                    content = self.extract_bold_from_rtf(content)
+                except Exception as e:
+                    print(f"Error parsing RTF: {e}")
+                    content = ''
+            
+            # Split content into lines and process
+            for line in content.splitlines():
                 if line.strip():
                     self.process_line(line)
         
@@ -303,8 +339,8 @@ if __name__ == "__main__":
     parser.add_argument('--api-key', '-k', 
                       help='OpenAI API key (optional, can use OPENAI_API_KEY environment variable)')
     parser.add_argument('--input', '-i',
-                      default='input.md',
-                      help='Input file path (default: input.md)')
+                      default='input.rtf',
+                      help='Input file path (default: input.rtf). Supports .md and .rtf files')
     parser.add_argument('--generate-media', '-m',
                       action='store_true',
                       default=False,
